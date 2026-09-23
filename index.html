@@ -198,7 +198,7 @@
       <rect x="7.3" y="7" width="1.4" height="4.5" rx="0.7" fill="#707070"/>
       <circle cx="8" cy="4.8" r="0.9" fill="#707070"/>
     </svg>
-    <span>왼쪽에서 이름, 키, 사진을 입력하고 + 를 눌러 캐릭터를 추가하세요. 추가한 캐릭터는 삼각형 버튼이나 드래그로 위치를 바꿀 수 있어요.</span>
+    <span>왼쪽에서 이름, 키, 사진을 입력하고 + 를 눌러 캐릭터를 추가하세요. 추가한 캐릭터는 드래그해서 위치를 바꿀 수 있어요.</span>
   </div>
   <div class="toolbar">
     <span class="who" id="who">캐릭터를 클릭해서 선택</span>
@@ -241,6 +241,7 @@
   let idCounter = 0;
   let pending = null;          // 새로 첨부한 사진 (추가/수정 전)
   let editingId = null;        // 수정 중인 캐릭터
+  let editBackup = null;       // 수정 전 원래 사진
   let view = null;             // 현재 화면 배치 정보
   let drag = null;
 
@@ -488,12 +489,23 @@
     const url = URL.createObjectURL(f);
     const img = new Image();
     img.onload = () => {
-      if (pending) URL.revokeObjectURL(pending.thumb);
-      pending = { ...trimImage(img), thumb: url };
+      const trimmed = { ...trimImage(img), thumb: url };
+      const editing = chars.find(c => c.id === editingId);
+      if (editing) {
+        // 수정 중이면 고르는 즉시 화면에 반영 (취소하면 원래 사진으로 복구)
+        if (!editBackup) editBackup = { canvas: editing.canvas, alpha: editing.alpha, thumb: editing.thumb };
+        else URL.revokeObjectURL(editing.thumb);
+        Object.assign(editing, trimmed);
+      } else {
+        if (pending) URL.revokeObjectURL(pending.thumb);
+        pending = trimmed;
+        setMsg('');
+      }
       $('preview').src = url;
       $('fname').textContent = f.name;
       $('fileBox').classList.add('has');
-      msg.textContent = '';
+      fileIn.value = '';
+      refresh();
     };
     img.onerror = () => { msg.textContent = '이미지를 열 수 없습니다. PNG 파일을 다시 선택하세요.'; };
     img.src = url;
@@ -512,7 +524,17 @@
     setMsg('');
   }
 
+  // 수정 취소 시 원래 사진으로 되돌림
+  function revertPhoto() {
+    if (!editBackup) return;
+    const c = chars.find(c => c.id === editingId);
+    if (c) { URL.revokeObjectURL(c.thumb); Object.assign(c, editBackup); }
+    else URL.revokeObjectURL(editBackup.thumb);
+    editBackup = null;
+  }
+
   function startEdit(c) {
+    revertPhoto();
     if (pending) { URL.revokeObjectURL(pending.thumb); pending = null; }
     editingId = c.id;
     selectedId = c.id;
@@ -527,6 +549,7 @@
   }
 
   function stopEdit() {
+    revertPhoto();
     if (pending) { URL.revokeObjectURL(pending.thumb); pending = null; }
     editingId = null;
     clearForm();
@@ -545,11 +568,7 @@
     if (editing) {
       editing.name = name;
       editing.height = h;
-      if (pending) {
-        URL.revokeObjectURL(editing.thumb);
-        Object.assign(editing, pending);
-        pending = null;
-      }
+      if (editBackup) { URL.revokeObjectURL(editBackup.thumb); editBackup = null; }
       editingId = null;
       clearForm();
       refresh();
