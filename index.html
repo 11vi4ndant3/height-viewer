@@ -88,6 +88,13 @@
   :focus-visible { outline: 2px solid #8a8a8a; outline-offset: 2px; }
 
   .msg { font-size: 12px; color: #b04a4a; min-height: 16px; }
+  .msg.info { color: var(--text); }
+  .actions { display: flex; gap: 6px; }
+  .actions .btn { flex: 1; }
+  .btn.add.editing { font-size: 14px; padding: 10px; }
+  #cancelBtn { display: none; }
+  .editing-mode #cancelBtn { display: block; }
+  li.editing { border-color: var(--btn); box-shadow: inset 3px 0 0 var(--btn); }
 
   .list-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--text); }
   ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
@@ -171,10 +178,13 @@
     </label>
   </div>
 
-  <button class="btn dark add" id="addBtn" title="캐릭터 추가">+</button>
+  <div class="actions" id="actions">
+    <button class="btn dark add" id="addBtn" title="캐릭터 추가">+</button>
+    <button class="btn" id="cancelBtn">취소</button>
+  </div>
   <div class="msg" id="msg"></div>
 
-  <div class="list-head"><span>추가된 캐릭터</span><span id="count">0 / 4</span></div>
+  <div class="list-head"><span>추가된 캐릭터 (눌러서 수정)</span><span id="count">0 / 4</span></div>
   <ul id="list"></ul>
 
   <div class="spacer"></div>
@@ -230,7 +240,8 @@
   let selectedId = null;
   let zCounter = 0;
   let idCounter = 0;
-  let pending = null;          // 첨부된 사진 (추가 전)
+  let pending = null;          // 새로 첨부한 사진 (추가/수정 전)
+  let editingId = null;        // 수정 중인 캐릭터
   let view = null;             // 현재 화면 배치 정보
   let drag = null;
 
@@ -479,6 +490,7 @@
     const url = URL.createObjectURL(f);
     const img = new Image();
     img.onload = () => {
+      if (pending) URL.revokeObjectURL(pending.thumb);
       pending = { ...trimImage(img), thumb: url };
       $('preview').src = url;
       $('fname').textContent = f.name;
@@ -489,31 +501,82 @@
     img.src = url;
   });
 
-  function add() {
-    if (chars.length >= MAX) { msg.textContent = `캐릭터는 최대 ${MAX}명까지 추가할 수 있습니다.`; return; }
-    const name = nameIn.value.trim();
-    const h = parseFloat(heightIn.value);
-    if (!name) { msg.textContent = '이름을 입력하세요.'; nameIn.focus(); return; }
-    if (!(h > 0)) { msg.textContent = '키를 숫자로 입력하세요.'; heightIn.focus(); return; }
-    if (!pending) { msg.textContent = '사진을 첨부하세요.'; return; }
+  function setMsg(text, info) {
+    msg.textContent = text;
+    msg.classList.toggle('info', !!info);
+  }
 
-    chars.push({ id: ++idCounter, name, height: h, ...pending, dx: 0, z: ++zCounter });
-    pending = null;
+  function clearForm() {
     nameIn.value = ''; heightIn.value = ''; fileIn.value = '';
     $('preview').removeAttribute('src');
     $('fname').textContent = '사진 첨부하기';
     $('fileBox').classList.remove('has');
-    msg.textContent = '';
+    setMsg('');
+  }
+
+  function startEdit(c) {
+    if (pending) { URL.revokeObjectURL(pending.thumb); pending = null; }
+    editingId = c.id;
+    selectedId = c.id;
+    nameIn.value = c.name;
+    heightIn.value = fmt(c.height);
+    fileIn.value = '';
+    $('preview').src = c.thumb;
+    $('fname').textContent = '사진 바꾸기';
+    $('fileBox').classList.add('has');
+    setMsg(`'${c.name}' 수정 중`, true);
     refresh();
   }
-  $('addBtn').addEventListener('click', add);
-  [nameIn, heightIn].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') add(); }));
+
+  function stopEdit() {
+    if (pending) { URL.revokeObjectURL(pending.thumb); pending = null; }
+    editingId = null;
+    clearForm();
+    refresh();
+  }
+
+  function submit() {
+    const name = nameIn.value.trim();
+    const h = parseFloat(heightIn.value);
+    const editing = chars.find(c => c.id === editingId);
+
+    if (!editing && chars.length >= MAX) { setMsg(`캐릭터는 최대 ${MAX}명까지 추가할 수 있습니다.`); return; }
+    if (!name) { setMsg('이름을 입력하세요.'); nameIn.focus(); return; }
+    if (!(h > 0)) { setMsg('키를 숫자로 입력하세요.'); heightIn.focus(); return; }
+
+    if (editing) {
+      editing.name = name;
+      editing.height = h;
+      if (pending) {
+        URL.revokeObjectURL(editing.thumb);
+        Object.assign(editing, pending);
+        pending = null;
+      }
+      editingId = null;
+      clearForm();
+      refresh();
+      return;
+    }
+
+    if (!pending) { setMsg('사진을 첨부하세요.'); return; }
+    chars.push({ id: ++idCounter, name, height: h, ...pending, dx: 0, z: ++zCounter });
+    pending = null;
+    clearForm();
+    refresh();
+  }
+  $('addBtn').addEventListener('click', submit);
+  $('cancelBtn').addEventListener('click', stopEdit);
+  [nameIn, heightIn].forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') submit();
+    if (e.key === 'Escape' && editingId) stopEdit();
+  }));
 
   function remove(id) {
     const c = chars.find(c => c.id === id);
     if (c) URL.revokeObjectURL(c.thumb);
     chars = chars.filter(c => c.id !== id);
     if (selectedId === id) selectedId = null;
+    if (editingId === id) { stopEdit(); return; }
     refresh();
   }
 
@@ -522,16 +585,22 @@
     list.innerHTML = '';
     chars.forEach(c => {
       const li = document.createElement('li');
-      if (c.id === selectedId) li.className = 'sel';
+      if (c.id === selectedId) li.classList.add('sel');
+      if (c.id === editingId) li.classList.add('editing');
       li.innerHTML = `<img alt=""><div class="info"><b></b><small>${fmt(c.height)} cm</small></div><button class="del" title="삭제">×</button>`;
       li.querySelector('img').src = c.thumb;
       li.querySelector('b').textContent = c.name;
-      li.addEventListener('click', () => { selectedId = c.id; refresh(); });
+      li.addEventListener('click', () => { if (editingId === c.id) stopEdit(); else startEdit(c); });
       li.querySelector('.del').addEventListener('click', e => { e.stopPropagation(); remove(c.id); });
       list.appendChild(li);
     });
     $('count').textContent = `${chars.length} / ${MAX}`;
-    $('addBtn').disabled = chars.length >= MAX;
+    const addBtn = $('addBtn');
+    addBtn.textContent = editingId ? '수정 완료' : '+';
+    addBtn.title = editingId ? '수정 완료' : '캐릭터 추가';
+    addBtn.classList.toggle('editing', !!editingId);
+    addBtn.disabled = !editingId && chars.length >= MAX;
+    $('actions').classList.toggle('editing-mode', !!editingId);
     $('saveBtn').disabled = chars.length === 0;
 
     const sel = selected();
@@ -567,7 +636,7 @@
     out.toBlob(blob => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `키비교_${chars.map(c => c.name).join('_')}.png`;
+      a.download = `${Math.floor(10000000 + Math.random() * 90000000)}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
