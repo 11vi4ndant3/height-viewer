@@ -208,8 +208,7 @@
     <button class="btn" data-act="front">앞으로</button>
     <button class="btn" data-act="back">뒤로</button>
     <span class="sep"></span>
-    <button class="btn" data-act="reset">위치 초기화</button>
-    <button class="btn" data-act="resetAll" id="resetAll">전체 정렬</button>
+    <button class="btn" data-act="resetAll" id="resetAll">위치 초기화</button>
   </div>
   <div class="stage" id="stage"><canvas id="cv"></canvas></div>
 </main>
@@ -295,7 +294,7 @@
 
   function topCm() {
     const m = chars.reduce((a, c) => Math.max(a, c.height), 0);
-    return Math.max(180, Math.ceil((m + 15) / 10) * 10);
+    return Math.max(190, Math.ceil((m + 15) / 10) * 10);
   }
 
   function bounds() {
@@ -468,7 +467,6 @@
     if (name === 'right') c.dx += step;
     if (name === 'front') c.z = ++zCounter;
     if (name === 'back') c.z = Math.min(...chars.map(o => o.z)) - 1;
-    if (name === 'reset') c.dx = 0;
     render();
   }
   document.querySelectorAll('.toolbar [data-act]').forEach(b =>
