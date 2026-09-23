@@ -211,6 +211,7 @@
   const GAP_CM = 12;           // 캐릭터 기본 간격 (cm)
   const MIN_SLOT_CM = 36;      // 이름표를 위한 최소 폭 (cm)
   const PADT = 28, LABELH = 58, PADB = 10, SIDE = 58; // px 단위 여백
+  const FOOT_SINK = 4;         // 발이 0cm 선에 살짝 걸리도록 내리는 정도 (px)
 
   const COLOR = {
     line: '#a3a3a3',
@@ -328,7 +329,7 @@
     }
 
     // 캐릭터 (z 순서대로)
-    const ground = Y(0);
+    const ground = Y(0) + FOOT_SINK * u;
     [...chars].sort((a, b) => a.z - b.z).forEach(c => {
       const hp = c.height * s, wp = widthCm(c) * s;
       const x = cx + posX(c) * s - wp / 2;
@@ -398,7 +399,7 @@
   function hit(px, py) {
     if (!view) return null;
     const { s, cx, y0, top } = view;
-    const ground = y0 + top * s;
+    const ground = y0 + top * s + FOOT_SINK;
     const sorted = [...chars].sort((a, b) => b.z - a.z);
     for (const c of sorted) {
       const hp = c.height * s, wp = widthCm(c) * s;
