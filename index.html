@@ -143,6 +143,13 @@
   }
   .toolbar .who { color: var(--text); margin-right: 8px; min-width: 120px; }
   .toolbar .btn { font-size: 13px; padding: 6px 10px; }
+  .toolbar .size { display: flex; align-items: center; gap: 4px; color: var(--text); }
+  .toolbar .size input {
+    width: 64px; font-size: 13px; padding: 5px 6px; text-align: right;
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text-strong); outline: none;
+  }
+  .toolbar .size input:focus { border-color: #9a9a9a; }
+  .toolbar .size input:disabled { opacity: .4; }
   .toolbar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
   .stage { flex: 1; position: relative; min-height: 0; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
@@ -207,6 +214,13 @@
     <span class="sep"></span>
     <button class="btn" data-act="front">앞으로</button>
     <button class="btn" data-act="back">뒤로</button>
+    <span class="sep"></span>
+    <span class="size">크기
+      <button class="btn" data-act="smaller" title="1% 작게 (Shift: 5%) · 키보드 ↓">−</button>
+      <input type="number" id="scaleIn" min="30" max="200" step="1" value="100" title="입력한 키 기준 크기 (%)">%
+      <button class="btn" data-act="bigger" title="1% 크게 (Shift: 5%) · 키보드 ↑">+</button>
+      <button class="btn" data-act="scaleReset" title="100%로 되돌리기">원래대로</button>
+    </span>
     <span class="sep"></span>
     <button class="btn" data-act="resetAll" id="resetAll">위치 초기화</button>
   </div>
@@ -281,7 +295,9 @@
   }
 
   /* ---------- 배치 계산 ---------- */
-  const widthCm = c => c.height * c.canvas.width / c.canvas.height;
+  const SCALE_MIN = 0.3, SCALE_MAX = 2;
+  const drawH = c => c.height * c.scale;   // 화면에 그려지는 높이 (cm)
+  const widthCm = c => drawH(c) * c.canvas.width / c.canvas.height;
   const slotCm = c => Math.max(widthCm(c), MIN_SLOT_CM);
   const posX = c => c.baseX + c.dx;
 
@@ -294,7 +310,7 @@
   }
 
   function topCm() {
-    const m = chars.reduce((a, c) => Math.max(a, c.height), 0);
+    const m = chars.reduce((a, c) => Math.max(a, drawH(c)), 0);
     return Math.max(190, Math.ceil((m + 15) / 10) * 10);
   }
 
@@ -342,7 +358,7 @@
     // 캐릭터 (z 순서대로)
     const ground = Y(0) + FOOT_SINK * u;
     [...chars].sort((a, b) => a.z - b.z).forEach(c => {
-      const hp = c.height * s, wp = widthCm(c) * s;
+      const hp = drawH(c) * s, wp = widthCm(c) * s;
       const x = cx + posX(c) * s - wp / 2;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
@@ -413,7 +429,7 @@
     const ground = y0 + top * s + FOOT_SINK;
     const sorted = [...chars].sort((a, b) => b.z - a.z);
     for (const c of sorted) {
-      const hp = c.height * s, wp = widthCm(c) * s;
+      const hp = drawH(c) * s, wp = widthCm(c) * s;
       const x0 = cx + posX(c) * s - wp / 2, yt = ground - hp;
       if (px < x0 || px > x0 + wp || py < yt || py > ground) continue;
       const ix = Math.min(c.canvas.width - 1, Math.floor((px - x0) / wp * c.canvas.width));
@@ -459,6 +475,11 @@
   /* ---------- 툴바 ---------- */
   const selected = () => chars.find(c => c.id === selectedId);
 
+  function setScale(c, v) {
+    c.scale = Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, v)) * 100) / 100;
+    $('scaleIn').value = Math.round(c.scale * 100);
+  }
+
   function act(name, shift) {
     if (name === 'resetAll') { chars.forEach(c => c.dx = 0); render(); return; }
     const c = selected();
@@ -468,8 +489,20 @@
     if (name === 'right') c.dx += step;
     if (name === 'front') c.z = ++zCounter;
     if (name === 'back') c.z = Math.min(...chars.map(o => o.z)) - 1;
+    if (name === 'smaller') setScale(c, c.scale - (shift ? 0.05 : 0.01));
+    if (name === 'bigger') setScale(c, c.scale + (shift ? 0.05 : 0.01));
+    if (name === 'scaleReset') setScale(c, 1);
     render();
   }
+  $('scaleIn').addEventListener('change', e => {
+    const c = selected();
+    const v = parseFloat(e.target.value);
+    if (!c) return;
+    setScale(c, v > 0 ? v / 100 : c.scale);
+    render();
+  });
+  $('scaleIn').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+
   document.querySelectorAll('.toolbar [data-act]').forEach(b =>
     b.addEventListener('click', e => act(b.dataset.act, e.shiftKey)));
 
@@ -477,6 +510,8 @@
     if (e.target.tagName === 'INPUT') return;
     if (e.key === 'ArrowLeft') { act('left', e.shiftKey); e.preventDefault(); }
     if (e.key === 'ArrowRight') { act('right', e.shiftKey); e.preventDefault(); }
+    if (e.key === 'ArrowUp') { act('bigger', e.shiftKey); e.preventDefault(); }
+    if (e.key === 'ArrowDown') { act('smaller', e.shiftKey); e.preventDefault(); }
   });
 
   /* ---------- 좌측 패널 ---------- */
@@ -576,7 +611,7 @@
     }
 
     if (!pending) { setMsg('사진을 첨부하세요.'); return; }
-    chars.push({ id: ++idCounter, name, height: h, ...pending, dx: 0, z: ++zCounter });
+    chars.push({ id: ++idCounter, name, height: h, ...pending, dx: 0, z: ++zCounter, scale: 1 });
     pending = null;
     clearForm();
     refresh();
@@ -622,9 +657,20 @@
 
     const sel = selected();
     $('who').textContent = sel ? `선택: ${sel.name}` : '캐릭터를 클릭해서 선택';
-    document.querySelectorAll('.toolbar [data-act]').forEach(b => {
+    $('scaleIn').addEventListener('change', e => {
+    const c = selected();
+    const v = parseFloat(e.target.value);
+    if (!c) return;
+    setScale(c, v > 0 ? v / 100 : c.scale);
+    render();
+  });
+  $('scaleIn').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+
+  document.querySelectorAll('.toolbar [data-act]').forEach(b => {
       b.disabled = b.dataset.act === 'resetAll' ? chars.length === 0 : !sel;
     });
+    $('scaleIn').disabled = !sel;
+    $('scaleIn').value = sel ? Math.round(sel.scale * 100) : 100;
     render();
   }
 
