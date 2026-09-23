@@ -177,7 +177,7 @@
   </label>
 
   <div class="field">
-    <span>사진 (배경이 투명한 이미지)</span>
+    <span>사진 (배경이 투명한 PNG)</span>
     <label class="file-box" id="fileBox">
       <img id="preview" alt="">
       <span class="fname" id="fname">사진 첨부하기</span>
@@ -234,7 +234,7 @@
   const GAP_CM = 12;           // 캐릭터 기본 간격 (cm)
   const MIN_SLOT_CM = 36;      // 이름표를 위한 최소 폭 (cm)
   const PADT = 28, LABELH = 58, PADB = 10, SIDE = 58; // px 단위 여백
-  const FOOT_SINK = 7;         // 발이 0cm 선에 살짝 걸리도록 내리는 정도 (px)
+  const FOOT_SINK = 7;         // 발이 0cm 선 아래로 내려가는 정도 (px). 머리 끝은 키 눈금에 고정
 
   const COLOR = {
     line: '#a3a3a3',
@@ -356,9 +356,11 @@
     }
 
     // 캐릭터 (z 순서대로)
+    // 머리 끝은 키 높이에 맞추고, 발끝만 0cm 선 아래로 살짝 늘려서 그림
     const ground = Y(0) + FOOT_SINK * u;
     [...chars].sort((a, b) => a.z - b.z).forEach(c => {
-      const hp = drawH(c) * s, wp = widthCm(c) * s;
+      const hp = drawH(c) * s + FOOT_SINK * u;
+      const wp = hp * c.canvas.width / c.canvas.height;
       const x = cx + posX(c) * s - wp / 2;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
@@ -429,7 +431,8 @@
     const ground = y0 + top * s + FOOT_SINK;
     const sorted = [...chars].sort((a, b) => b.z - a.z);
     for (const c of sorted) {
-      const hp = drawH(c) * s, wp = widthCm(c) * s;
+      const hp = drawH(c) * s + FOOT_SINK;
+      const wp = hp * c.canvas.width / c.canvas.height;
       const x0 = cx + posX(c) * s - wp / 2, yt = ground - hp;
       if (px < x0 || px > x0 + wp || py < yt || py > ground) continue;
       const ix = Math.min(c.canvas.width - 1, Math.floor((px - x0) / wp * c.canvas.width));
